@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sound-bot-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: soundbot
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-soundbot_secure_password}
+      POSTGRES_DB: sound_bot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sound-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soundbot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sound-bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      DATABASE_URL: postgresql+asyncpg://soundbot:${DB_PASSWORD:-soundbot_secure_password}@postgres:5432/sound_bot
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+    volumes:
+      - ./main.py:/app/main.py:ro
+      - ./logs:/app/logs
+    networks:
+      - sound-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  sound-network:
+    driver: bridge
